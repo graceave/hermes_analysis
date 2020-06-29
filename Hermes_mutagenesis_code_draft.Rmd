@@ -1,0 +1,123 @@
+---
+title: "Transposon mutagenesis in *GAP1* CNV strains"
+author: "Grace Avecilla"
+date: "February 10, 2020"
+output:
+  html_notebook:
+    toc: yes
+  html_document:
+    df_print: paged
+    toc: yes
+---
+
+```{r echo=F}
+library(tidyverse)
+library(patchwork)
+library(png)
+library(ggpubr)
+
+theme_set(theme_minimal(base_size = 12))
+```
+
+
+# Figure 1
+```{r}
+#Read in illustrator figures for 1A and 1B, data for 1C
+f1a = readPNG("./illustrator_figures/Fig1A.png")
+f1b = readPNG("./illustrator_figures/Fig1B.png")
+f1c_data = read_csv('./figure_data/Fig1C.csv')
+```
+
+
+```{r}
+a = ggplot() +
+  background_image(f1a) +
+  coord_fixed() +
+  ggtitle("A") 
+b = ggplot() +
+  background_image(f1b) +
+  coord_fixed() +
+  ggtitle("B")
+c = ggplot(f1c_data, aes(sample, value, fill=location_type)) +
+  geom_bar(stat = "identity", position=position_dodge2(reverse = TRUE)) +
+  scale_fill_brewer(name ="",
+                      breaks=c("total_sites", "total_insertions_in_genes", "total_insertions_noncoding"),
+                         labels=c("Total", "CDS", "Non-coding region"), palette = "Set3") +
+  ylab("Number of unique insertion sites") +
+  xlab('') +
+  scale_y_continuous(labels = scales::comma) +
+  #theme(legend.position="top") +
+  ggtitle("C")
+
+designF1 <- "
+  1122
+  1122
+  333#
+"
+
+Fig1 = a + b + c + plot_layout(design = designF1)
+Fig1
+ggsave("Figure1.pdf", plot = Fig1, width = 13, height = 9, units = "in")
+```
+
+**Figure 1 Hermes transposon insertion results in genome wide mutagenesis in euploid and CNV yeast strains** **A.** The experiment was performed on a euploid *S. cerevisiae* strain and seven strains that have CNVs which include *GAP1*. The hypothesized structure of each *GAP1* CNV is diagrammed; the amplified region is shown as a colored block with arrows. Arrows pointing right represent copies that maintain their original orientation, arrows point left represent copies that are inverted. **B.** Plasmids containing the hermes transposase under the *GALS* (truncated *GAL1*) promoter and a hygromycin resistance gene flanked by the hermes terminal inverted repeats (TIR). Upon addition of galactose to the media, the transposase is expressed, and the hygromycin resistance gene flanked by the TIRs is excised from the plasmid and inserted in the yeast genome. Insertion sites are identified by targeted PCR and amplicon sequencing, and mutational effects are inferred by the number of unique insertion sites at different regions of the genome. **C.** After insertion mutagenesis in each CNV strain and in two biological replicates of the euploid strain (16757_1 and 1657_2), the total number of unique insertion sites in each experiment was identified (purple). Strains have more unique insertion sites in non-coding regions (yellow), than coding regions (green). 
+
+
+# Introduction
+
+# Description of Strains Used
+
+# Rationale - fitness differences in CNV strains
+
+## Fitness in glutamine limited chemostats
+Pull this from Steff's paper
+
+### Experimental Set up
+
+## Fitness in YPGal batch culture
+I think I already did this experiment
+
+### Experimental Set up
+
+# Transposon mutagenesis Methods
+
+## Transposon induction in strains
+
+## Library prep and sequencing
+
+## Transposon mutagenesis raw sequence analysis
+Read trimming, qc, mapping, summary data done on HPC. Description here.
+*Separate file with all HPC code*
+
+## General set up for R analysis
+*Processing done in another .Rmd, generates .Rdata files that can be read in here to create main plots*
+
+# Results
+
+## Saturating transposon mutagenesis of yeast strains can be used to assess differences in fitness
+Plot the number of unique insertion sites per sample, plot metagene essential vs non essential genes plots
+
+
+## Here are normalized insertions per gene for the genes we will validate
+```{r}
+val_genes_ipg_norm = ipg_norm %>% 
+  filter(gene %in% c("YER177W","YDR099W", "YOR371C", "YAL056W", "YOL110W", "YDR011W", "YOR153W", "YPL230W")) %>% mutate(gene_name = NA)
+
+for(i in 1:nrow(val_genes_ipg_norm) ){
+  val_genes_ipg_norm$gene_name[i] =
+    bitr(val_genes_ipg_norm$gene[i], fromType = "ORF", toType = "GENENAME", OrgDb = org.Sc.sgd.db::org.Sc.sgd.db)$GENENAME
+}
+
+ggplot(val_genes_ipg_norm,
+       aes(gene_name, norm_insertions_per_gene, fill = sample)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette="Set3") +
+  xlab("") +
+  ylab("Normalized insertions/gene")
+```
+
+
+####references####
+* FACS analysis from previous study showed that in the absence of budding yeast 14-3-3 proteins, cells spend most of their time in S phase and cell takes more time for duplication of its genetic content (Lotterberger et al., 2006).
+* C. Wang, C. Skinner, E. Easlon, S.J. Lin
+Deleting the 14-3-3 protein Bmh1 extends life span in Saccharomyces cerevisiae by increasing stress response
