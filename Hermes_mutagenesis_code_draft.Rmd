@@ -15,6 +15,9 @@ library(tidyverse)
 library(patchwork)
 library(png)
 library(ggpubr)
+library(ggrastr)
+library(knitr)
+library(kableExtra)
 
 theme_set(theme_minimal(base_size = 12))
 ```
@@ -62,41 +65,100 @@ ggsave("Figure1.pdf", plot = Fig1, width = 13, height = 9, units = "in")
 
 **Figure 1 Hermes transposon insertion results in genome wide mutagenesis in euploid and CNV yeast strains** **A.** The experiment was performed on a euploid *S. cerevisiae* strain and seven strains that have CNVs which include *GAP1*. The hypothesized structure of each *GAP1* CNV is diagrammed; the amplified region is shown as a colored block with arrows. Arrows pointing right represent copies that maintain their original orientation, arrows point left represent copies that are inverted. **B.** Plasmids containing the hermes transposase under the *GALS* (truncated *GAL1*) promoter and a hygromycin resistance gene flanked by the hermes terminal inverted repeats (TIR). Upon addition of galactose to the media, the transposase is expressed, and the hygromycin resistance gene flanked by the TIRs is excised from the plasmid and inserted in the yeast genome. Insertion sites are identified by targeted PCR and amplicon sequencing, and mutational effects are inferred by the number of unique insertion sites at different regions of the genome. **C.** After insertion mutagenesis in each CNV strain and in two biological replicates of the euploid strain (16757_1 and 1657_2), the total number of unique insertion sites in each experiment was identified (purple). Strains have more unique insertion sites in non-coding regions (yellow), than coding regions (green). 
 
+# Figure 2
+Fig2A Essential euploid, nonessential CNV
+Fig2B Volcano plot all CNV vs all euploid
+Fig2C gsea on ranked list fold change for all CNV vs euploid & each CNV strain vs euploid
+Fig2D Significantly different gene insertion reveal allele specific genetic interactions
 
-# Introduction
+* Note: I am going to do differential analysis on the 100 bp windows - if this turns up interesting results, should they be included in this figure? What should that look like?*
+```{r}
+# read in data
+f2a = read.csv("./figure_data/Fig2A.csv")
+f2b = read.csv("./figure_data/Fig2B.csv")
+f2c = read.csv("./figure_data/Fig2C.csv")
+f2d = read.csv("./figure_data/Fig2D.csv")
+```
 
-# Description of Strains Used
+```{r}
+#not sure which I want to use for A
+a1 = ggplot(f2a, aes(common_name, norm_inserts, fill = strain)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Set3") +
+  ylab("number of unique insertion sites / total insertion sites")
+a2 = ggplot(f2a, aes(common_name, insertions, fill = strain)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  scale_fill_brewer(palette = "Set3") +
+  ylab("number of unique insertion sites")
+b = ggplot(f2b) +
+  geom_point(aes(x = log2FoldChange, y = -log10(pvalue), colour = sig), alpha = 0.75) +
+  ggtitle("Insertions in all CNV strains vs euploid") +
+  scale_x_continuous(breaks = c(-2, 0, 2, 4, 6))+
+  #xlab("log2 fold change") + 
+  #ylab("-log10P") +
+  scale_color_manual(values = c("#d9d9d9", "#fb8072"), labels = c("Adj. P ≥ 0.05", "Adj. P < 0.05")) +
+  theme(legend.position = c(0.15, 0.9), legend.title = element_blank(),
+        legend.background = element_blank(),
+        legend.box.background = element_rect(colour = "black")) +
+  geom_text_repel(aes(x = log2FoldChange, y = -log10(pvalue), label = ifelse(sig == T, as.character(common_name),"")))
+c = ggplot(f2c, aes(x = sample, y =  Description, order, color = enrichmentScore, size =  setSize)) +
+  geom_point(aes(size = setSize)) +
+  scale_size_continuous(range = c(4, 10)) + 
+  ggtitle("Biological Pathway (p.adj<0.05)")+
+  xlab("")+
+  ylab("")+
+  scale_colour_gradient2(low = "blue", mid = "white", high = "red") +
+  theme(axis.text = element_text(face = "bold", color = "black", size = 30))
+```
 
-# Rationale - fitness differences in CNV strains
+# Figure 3 Amplified genes
 
-## Fitness in glutamine limited chemostats
-Pull this from Steff's paper
+# Figure 4
 
-### Experimental Set up
+# Table 1
+Genes that have no insertions in any strain, & if they have been previously marked essential. Those which have not previously been marked as essential may be conditionally essential in YPGal.
+```{r}
+t1 = read_csv("./figure_data/Table1.csv")
+kable(t1) %>% kable_styling()
+```
 
-## Fitness in YPGal batch culture
-I think I already did this experiment
 
-### Experimental Set up
 
-# Transposon mutagenesis Methods
+# Data that is important but too small to make a figure/table of
+* There is one gene (RRN10), that has 0 insertions in any CNV strains, but has 1 insertion in 1657_1, and 2 insertions in 1657_2
 
-## Transposon induction in strains
 
-## Library prep and sequencing
+# Supplementary Figure 1.1
+SFig1.1A WGS read depth before experiment 
+SFig1.1B WGS read depth after experiment
+SFig1.1C normalized reads/gene before and after tn mutagenesis?
 
-## Transposon mutagenesis raw sequence analysis
-Read trimming, qc, mapping, summary data done on HPC. Description here.
-*Separate file with all HPC code*
+# Supplementary Figure 1.2
+SFig1.2A Spearman correlation
+SFig1.2B Insertion coverage over the genome
+SFig1.2C Number of hermes insertions vs. number of WGS reads?
 
-## General set up for R analysis
-*Processing done in another .Rmd, generates .Rdata files that can be read in here to create main plots*
+```{r}
+# read in data
+fs1.2b = read_csv("./figure_data/FigS1.2B.csv")
+```
 
-# Results
+```{r}
+b = ggplot(cov_df, aes(bin_start, coverage, fill = chromosome)) +
+  facet_grid(sample ~ chromosome, scales = "free") +
+  ylab("unique insertion sites/100 bp bin") +
+  xlab("Bin start position")
+  geom_point_rast() # should I add a running mean here? or make windows smaller?
+```
 
-## Saturating transposon mutagenesis of yeast strains can be used to assess differences in fitness
-Plot the number of unique insertion sites per sample, plot metagene essential vs non essential genes plots
 
+# Supplementary Figure 2.1 Insertion profiles recover known essential genes
+SFig2.1A Barplots number of insertions in ACT1 vs average
+SFig2.1B metagene plots essential vs non-essential genes
+
+SFig2.1A Normalized insertions/gene for genes in Fig2D
+
+# Supplementary Figure 2.2 Differential analysis and GSEA excluding amplified genes
 
 ## Here are normalized insertions per gene for the genes we will validate
 ```{r}
@@ -115,6 +177,8 @@ ggplot(val_genes_ipg_norm,
   xlab("") +
   ylab("Normalized insertions/gene")
 ```
+
+
 
 
 ####references####

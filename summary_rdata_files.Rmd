@@ -24,35 +24,14 @@ library(DESeq2)
 library(tidyverse)
 library(OneR)
 library(EnhancedVolcano)
+library(labtools)
 
 select <- dplyr::select
 
-dir = "/Volumes/GoogleDrive/My Drive/Gresham Lab_Grace/france_satay/Hermes_mutagenesis_paper/analysis/"
+dir = "/Volumes/GoogleDrive/My Drive/Gresham Lab_Grace/greshamlab_github/hermes_analysis/"
 setwd(dir)
 
 seq_runs = c("bgi1","bgi2", "nyc1", "nyc2")
-
-#this function changes a cds id to the systematic id
-change_id_tosystematic = function(x, db) {
-  if(x == "ID=GRESHAMGFP" | x == "ID= GRESHAMGFP") {
-    new = "GRESHAMGFP"
-  } else {
-    new=db$systematic_name[which(db$id == x)]
-  }
-  return(new)
-}
-
-##this function changes a systematic id to the cds id
-change_id_fromsystematic = function(x, db) {
-  if(x == "GRESHAMGFP") {
-    new = "ID=GRESHAMGFP"
-  } else {
-    new=db$id[which(db$systematic_name == x)]
-  }
-  return(new)
-}
-id_db = read_csv(paste0(dir,"for_summary_nb/cds_sgdid_to_systematic.csv"), 
-                 col_types = cols(sgd_id = col_character(),systematic_name = col_character(),id = col_character()))
 ```
 
 ## CNV structure (by read depth) before and after experiment
@@ -108,7 +87,7 @@ rpp_df = do.call(rbind, read_per_pos) %>%
                                 chromosome == 'NC_001224.1' ~ "mito"))
 ```
 
-### Summary of reads per library and reads per position
+### Summary of reads per library and reads per position - Supplementary Table???
 Now get summary data for reads per position for each library.
 ```{r summary reads per position for each individual library}
 rpp_df_each %>% group_by_at(vars(version, sample)) %>% 
@@ -156,9 +135,8 @@ ipg_df = do.call(rbind,ipg_all) %>%
   dplyr::rename(insertions_per_gene=`#insertion`)
 
 # add in systematic gene names
-for(i in 1:nrow(ipg_df)) {
-  ipg_df$gene[i] = change_id_tosystematic(ipg_df$CDS[i], db=id_db)
-}
+ipg_df$gene = yeast_r64_to_systematic(ipg_df$CDS)
+ipg_df = ipg_df %>% mutate(gene = if_else(CDS == "ID= GRESHAMGFP", "CNV_reporter", gene))
 ```
 
 Normalized insertions per gene (insertions/kb/gene). This was already done on the HPC during the initial part of the pipeline. 
@@ -169,9 +147,8 @@ get_ipkbpg = function(x, ver = "combined") {
                   col_names = F, col_types = cols()) %>%
     dplyr::rename(id=X1, inserts_kb_gene = X2) %>%
     mutate(sample = str_sub(x, 1, -27), gene=NA)
-  for(i in 1:nrow(data)) {
-    data$gene[i] = change_id_tosystematic(data$id[i], id_db)
-  }
+  data$gene = yeast_r64_to_systematic(data$id)
+  data = data %>% mutate(gene = if_else(id == "ID= GRESHAMGFP", "CNV_reporter", gene))
   data %>% dplyr::select(-id)
 }
 ipkbpg_df = do.call(rbind, map(list.files(paste0(dir, '/hpc_output/combined'), 
@@ -185,7 +162,7 @@ ipkbpg = ipkbpg_df %>%
 
 
 
-#### UP TO HERE IS GOOD ####
+#### This next section needs to be fixed ####
 
 Plot correlation between samples sequenced at bgi first time, bgi second time, and in nyc
 ```{r plot seq rep insert/gene}
@@ -237,6 +214,7 @@ SFig1.2a <- ggplot(gene.cor, aes(x=Var1, y=Var2, fill=Correlation)) +
   theme(axis.title = element_blank(), axis.text.x = element_text(angle = 45, vjust=1, hjust=1))
 ```
 
+### Supplementary table?
 ```{r summary insertions per gene}
 insert_per_gene_summary = ipg_df %>% group_by(sample) %>% 
   summarise(total_gene = n(), min_insertions_per_gene = min(insertions_per_gene),
@@ -277,7 +255,7 @@ files = list.files(path =
                      pattern = '*_insertionWindows.cov')
 wind_cov = map(files, get_window_cov, ver="combined")
 cov_df = do.call(rbind, wind_cov) %>%
-  rename(chromosome = "X1", bin_start = "X2", bin_end = "X3", coverage = "X4") %>%
+  dplyr::rename(chromosome = "X1", bin_start = "X2", bin_end = "X3", coverage = "X4") %>%
   mutate(chromosome = case_when(chromosome == 'NC_001133.9' ~ "1",
                                              chromosome == 'NC_001134.8' ~ "2",
                                              chromosome == 'NC_001135.5' ~ "3",
@@ -296,10 +274,8 @@ cov_df = do.call(rbind, wind_cov) %>%
                                              chromosome == 'NC_001148.4' ~ "16",
                                 chromosome == 'NC_001224.1' ~ "mito"))
 
-#### FigS1.2B ####
-FigS1.2B = ggplot(cov_df, aes(bin_start, coverage, fill = chromosome)) +
-  geom_point() +
-  facet_grid(sample ~ chromosome, scales = "free")
+#### write data for FigS1.2B####
+write_csv(coding_v_non, "./figure_data/FigS1.2B.csv")
 ```
 
 ### Find which genes in each library that have no insertions
@@ -314,9 +290,8 @@ get_gene_no_inserts=function(x, ver = "combined") {
   genes = read_csv(paste0(dir, '/hpc_output/', ver, '/', x), 
                    col_names = F, col_types = cols()) %>% 
     dplyr::rename(id=X1) %>% mutate(gene=NA, sample = str_sub(x,1,-26), insertions_per_gene=0, run = ver)
-  for(i in 1:nrow(genes)) {
-  genes$gene[i] = change_id_tosystematic(genes$id[i], db=id_db)
-  }
+  genes$gene = yeast_r64_to_systematic(genes$id)
+  genes = genes %>% mutate(gene = if_else(id == "ID= GRESHAMGFP", "CNV_reporter", gene))
   genes %>% dplyr::select(gene, sample, insertions_per_gene) %>% distinct()
 }
 no_insertion_files = list.files(path = paste0(dir, 'hpc_output/combined'), pattern = "genesWithNoInsertion.txt")
@@ -331,6 +306,13 @@ insertions_combined = ipg_df %>%
 #reshape data
 ipg = insertions_combined %>%
   spread(key=sample, value = insertions_per_gene) 
+
+# normalize insertions per gene by dividing by library size
+ipg_norm = ipg %>% 
+  pivot_longer(cols = starts_with('1'), names_to = "sample", values_to = "insertions") %>%
+  group_by(sample) %>%
+  mutate(norm_inserts = insertions/sum(insertions))
+
 ```
 
 ### Use insertions per gene to investigate gene essentiality
@@ -340,7 +322,7 @@ We also generated a list of essential genes by using YeastMine and searching SGD
 
 ```{r essential gene lists}
 #sgd
-ess_sgd = read_csv('Phenotype_Genes.csv', col_names = F, col_types = cols(
+ess_sgd = read_csv('./files/Phenotype_Genes.csv', col_names = F, col_types = cols(
   X1 = col_character(),
   X2 = col_character(),
   X3 = col_character(),
@@ -363,7 +345,7 @@ ess_sgd = read_csv('Phenotype_Genes.csv', col_names = F, col_types = cols(
   dplyr::rename(gene = X2) %>% dplyr::select(gene) %>%
   mutate(ess_sgd = "yes")
 # deletion collection
-ess_del = read_tsv('Essential_ORFs.txt', col_names = T, comment = '=', col_types = cols(
+ess_del = read_tsv('./files/Essential_ORFs.txt', col_names = T, comment = '=', col_types = cols(
   rec_num = col_double(),
   ORF_name = col_character(),
   deletion_alias = col_character(),
@@ -382,11 +364,14 @@ essential = ess_sgd %>% full_join(ess_del) %>%
 Here we are going to look at genes that have no insertions in any of the libraries (and so are probably essential in YPGal.)
 ```{r compare essential genes with insertion libraries}
 ess_compare = ipg %>%
-  right_join(essential %>% dplyr::select(gene, ess_del, ess_sgd), by = "gene")
+  full_join(essential %>% dplyr::select(gene, ess_del, ess_sgd), by = "gene")
 
 essential_YPGal = ess_compare %>% 
-  filter(`1657_1` == 0 & `1657_2` == 0 & `1728`== 0 & `1734` == 10& `1736` == 0 & `1740` == 0 & `1744` == 0 & `1747` == 0 & `1751` == 0)# & ess_del == "yes")
+  filter(`1657_1` == 0 & `1657_2` == 0 & `1728`== 0 & `1734` == 0& `1736` == 0 & `1740` == 0 & `1744` == 0 & `1747` == 0 & `1751` == 0)# & ess_del == "yes")
 print(paste0("There are ", nrow(essential_YPGal), " genes that have no insertions in any of the libraries."))
+
+#### write data for Table 1####
+write_csv(essential_YPGal %>% mutate(common_name = yeast_systematic_to_common(gene)), "./figure_data/Table1.csv")
 ```
 
 These are conditionally essential in YPGal for CNVs only - there are no insertions in any of the CNV strains, but 1657 has an insertion.
@@ -400,17 +385,117 @@ These genes are not essential in CNV strains (have 1 or more insertions in all o
 NOTessentialCNV_YPGal = ess_compare %>% 
   dplyr::filter(`1657_1` == 0 & `1657_2` == 0  & `1728`> 0  & `1734` > 0  & `1736` > 0  & `1740` > 0  & `1744` > 0 & `1747` > 0 & `1751` > 0)
 print(paste0("There are ", nrow(NOTessentialCNV_YPGal), " genes that are have no insertions in the euploid strain, but have insertions in the CNV strains."))
-NOTessentialCNV_YPGal = NOTessentialCNV_YPGal %>% mutate(gene = if_else(gene == "YKR081C", "RPF2", "RIO2")) %>%
-  pivot_longer(cols = starts_with("1"), names_to = "strain", values_to = "insertions")
+NOTessentialCNV_YPGal = NOTessentialCNV_YPGal %>%
+  pivot_longer(cols = starts_with("1"), names_to = "strain", values_to = "insertions") %>%
+  left_join(ipg_norm, by = c("gene" = "gene", "strain" = "sample", "insertions" = "insertions")) %>%
+  mutate(common_name = yeast_systematic_to_common(gene))
 
-#### Figure 2A ####
-Fig2A = ggplot(NOTessentialCNV_YPGal, aes(gene, insertions, fill = strain)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  scale_fill_brewer(palette = "Set3") +
-  theme(legend.position="top") + 
-  ylab("number of unique insertion sites")
+#### write data for Figure 2A####
+write_csv(NOTessentialCNV_YPGal, "./figure_data/Fig2A.csv")
 ```
 
+### Do differential analysis on CNVs vs 1657
+
+```{r}
+#make counts matrix the way deseq wants it
+#####this is for all cnv vs 1657####
+counts = as.data.frame(ipg) %>% dplyr::select(-gene)
+rownames(counts) = ipg$gene
+#make col data frame describing exp
+coldata = data.frame(type = c("wt", "wt", "cnv", "cnv", "cnv", "cnv", "cnv","cnv", "cnv"), sample = c('1657_1','1657_2','1728','1734', '1736', '1740', '1744','1747','1751'), row.names = colnames(counts))
+coldata$type = factor(coldata$type, levels = c('wt', 'cnv'))
+#make deseq data
+dds <- DESeqDataSetFromMatrix(countData = counts,
+                              colData = coldata,
+                              design = ~ type)
+dds <- DESeq(dds)
+res <- results(dds, alpha=0.05)
+summary(res)
+
+#### write data for Figure 2B####
+t=as_tibble(res) %>%
+            mutate(gene = rownames(res), sig = padj < 0.05) %>% 
+            filter(!is.na(padj)) %>% #remove rows with baseMean = 0 (meaning zero insertions) for plotting
+  mutate(common_name = yeast_systematic_to_common(gene))
+write_csv(t, "./figure_data/Fig2B.csv")
+
+
+# do GSEA based on log2FC
+## assume 1st column is ID
+## 2nd column is FC
+
+## feature 1: numeric vector
+geneList_allCNVdiff = res$log2FoldChange[-1] #remove GRESHAMGFP
+## feature 2: named vector
+gene.df <- bitr(rownames(res)[-1], fromType = "ORF",
+        toType = "ENTREZID",
+        OrgDb = org.Sc.sgd.db::org.Sc.sgd.db)
+names(geneList_allCNVdiff) = gene.df$ENTREZID
+## feature 3: decreasing order
+geneList_allCNVdiff = sort(geneList_allCNVdiff, decreasing = TRUE)
+ego <- gseGO(geneList     = geneList_allCNVdiff,
+             OrgDb        = org.Sc.sgd.db::org.Sc.sgd.db,
+             keyType = "ENTREZID",
+              ont          = "BP",
+              nPerm        = 1e6,
+              minGSSize    = 5,
+              maxGSSize    = 800,
+              pvalueCutoff = 0.05,
+              pAdjustMethod="fdr",
+              verbose      = FALSE)
+ego@result %>%
+  kable() %>%
+  kable_styling()
+
+
+gsea_out = as_tibble(ego@result) %>% mutate(sample = "All_CNV") %>% select(sample, ID,Description, setSize, enrichmentScore, NES, p.adjust,rank, pvalue, core_enrichment) %>% arrange(sample,-enrichmentScore)
+```
+### Do differential analysis and GSEA on each individual CNV strain vs 1657
+```{r}
+significant_by_strain = NULL
+
+for(strain in c("1728", "1734", "1736", "1740", "1744", "1747", "1751")) {
+  counts = as.data.frame(ipg) %>% dplyr::select(`1657_1`, `1657_2`, strain)
+  rownames(counts) = ipg$gene
+  coldata = data.frame(type = c("wt", "wt", "cnv"), sample = c('1657_1','1657_2',strain), row.names = colnames(counts))
+  coldata$type = factor(coldata$type, levels = c('wt', 'cnv'))
+  dds <- DESeqDataSetFromMatrix(countData = counts,
+                              colData = coldata,
+                              design = ~ type)
+  dds <- DESeq(dds)
+  res <- results(dds, alpha=0.05)
+  significant_by_strain = bind_rows(significant_by_strain, 
+                                    as_tibble(res) %>% 
+                                      mutate(gene = rownames(res), strain = strain) %>% 
+                                      filter(padj < 0.05))
+  geneList = res$log2FoldChange[-1] #remove GRESHAMGFP
+  gene.df <- bitr(rownames(res)[-1], fromType = "ORF",
+        toType = "ENTREZID",
+        OrgDb = org.Sc.sgd.db::org.Sc.sgd.db)
+  names(geneList) = gene.df$ENTREZID
+  geneList = sort(geneList, decreasing = TRUE)
+  ego <- gseGO(geneList     = geneList,
+             OrgDb        = org.Sc.sgd.db::org.Sc.sgd.db,
+             keyType = "ENTREZID",
+              ont          = "BP",
+              nPerm        = 1e6,
+              minGSSize    = 5,
+              maxGSSize    = 800,
+              pvalueCutoff = 0.05,
+              pAdjustMethod="fdr",
+              verbose      = FALSE)
+  gsea_out = bind_rows(gsea_out, as_tibble(ego@result) %>% mutate(sample = strain))
+}
+#### write data for Figure 2C - but it needs to be summarized by REVIGO first####
+gsea_out = gsea_out %>% select(ID,enrichmentScore,sample,Description, setSize, NES, p.adjust,rank, pvalue, core_enrichment) %>% arrange(sample,-enrichmentScore)
+write_tsv(gsea_out, "./figure_data/Fig2C_to_summarize.tsv")
+
+# gather together REVIGO summarized data
+
+#### write data for Figure 2D####
+significant_by_strain$common_name = yeast_systematic_to_common(significant_by_strain$gene)
+write_csv(significant_by_strain, "./figure_data/Fig2D.csv")
+```
 
 ## Relative frequency of insertions in CNV regions vs 1657
 
@@ -510,12 +595,6 @@ for(i in 1:nrow(genes_region_1751)) {
 
 ### Plot relative frequency of insertions in CNV regions 
 ```{r boxplots rel freq inserts CNV region}
-# normalize insertions per gene by dividing by library size
-ipg_norm = ipg %>% 
-  pivot_longer(cols = starts_with('1'), names_to = "sample", values_to = "insertions") %>%
-  group_by(sample) %>%
-  mutate(norm_inserts = insertions/sum(insertions))
-
 
 freq_region_kb_gene = ipg_norm %>%
   mutate(keep = case_when(sample %in% c("1657_1", "1657_2", "1728") & gene %in% genes_region_1728$gene ~ "yes",
@@ -537,441 +616,3 @@ ggplot(freq_region_kb_gene, aes(sample, norm_inserts, color = essential)) +
 
 ```
 
-### Do differential analysis on CNVs vs 1657
-
-```{r}
-#make counts matrix the way deseq wants it
-#####this is for all cnv vs 1657####
-#remove samples with <100,000 insertion sites?
-counts = as.data.frame(ipg) %>% dplyr::select(-gene)
-rownames(counts) = ipg$gene
-#make col data frame describing exp
-coldata = data.frame(type = c("wt", "wt", "cnv", "cnv", "cnv", "cnv", "cnv","cnv", "cnv"), sample = c('1657_1','1657_2','1728','1734', '1736', '1740', '1744','1747','1751'), row.names = colnames(counts))
-coldata$type = factor(coldata$type, levels = c('wt', 'cnv'))
-#make deseq data
-dds <- DESeqDataSetFromMatrix(countData = counts,
-                              colData = coldata,
-                              design = ~ type)
-dds <- DESeq(dds)
-res <- results(dds, alpha=0.05)
-summary(res)
-DESeq2::plotMA(res, ylim=c(-2,2))
-EnhancedVolcano(res,
-    lab = rownames(res),
-    x = 'log2FoldChange',
-    title='all cnv vs 1657',
-    y = 'pvalue')
-
-
-t=as_tibble(res) %>%
-            mutate(gene = rownames(res), sig = padj < 0.05) %>% 
-            filter(!is.na(padj))
-
-# this gives log2(n + 1)
-ntd <- normTransform(dds)
-library("pheatmap")
-select <- order(rowMeans(counts(dds,normalized=TRUE)),
-                decreasing=TRUE)
-df <- as.data.frame(colData(dds)[c("type")])
-pheatmap(assay(ntd)[select,], cluster_rows=T, show_rownames=F,
-         cluster_cols=T, annotation_col=df)
-
-# do GSEA based on log2FC
-## assume 1st column is ID
-## 2nd column is FC
-
-## feature 1: numeric vector
-geneList_allCNVdiff = res$log2FoldChange[-1] #remove GRESHAMGFP
-## feature 2: named vector
-gene.df <- bitr(rownames(res)[-1], fromType = "ORF",
-        toType = "ENTREZID",
-        OrgDb = org.Sc.sgd.db::org.Sc.sgd.db)
-names(geneList_allCNVdiff) = gene.df$ENTREZID
-## feature 3: decreasing order
-geneList_allCNVdiff = sort(geneList_allCNVdiff, decreasing = TRUE)
-ego <- gseGO(geneList     = geneList_allCNVdiff,
-             OrgDb        = org.Sc.sgd.db::org.Sc.sgd.db,
-             keyType = "ENTREZID",
-              #ont          = "BP",
-              nPerm        = 1e6,
-              #minGSSize    = 100,
-              #maxGSSize    = 500,
-              minGSSize    = 5,
-              maxGSSize    = 800,
-              pvalueCutoff = 0.05,
-              pAdjustMethod="fdr",
-              verbose      = TRUE)
-ego@result %>%
-  kable() %>%
-  kable_styling()
-# visualize results of GSEA
-dotplot(ego, x="Count", showCategory=13)
-ridgeplot(ego)
-```
-### Do differential analysis on each individual CNV strain vs 1657
-```{r}
-#make counts matrix the way deseq wants it
-#####this is for 1728 vs 1657####
-counts = as.data.frame(ipg) %>% dplyr::select(`1657_1`, `1657_2`,`1728`)
-rownames(counts) = ipg$gene
-#make col data frame describing exp
-coldata = data.frame(type = c("wt", "wt", "cnv"), sample = c('1657_1','1657_2','1728'), row.names = colnames(counts))
-coldata$type = factor(coldata$type, levels = c('wt', 'cnv'))
-#make deseq data
-dds <- DESeqDataSetFromMatrix(countData = counts,
-                              colData = coldata,
-                              design = ~ type)
-dds <- DESeq(dds)
-res <- results(dds, alpha=0.05)
-summary(res)
-DESeq2::plotMA(res, ylim=c(-2,2))
-EnhancedVolcano(res,
-    lab = rownames(res),
-    x = 'log2FoldChange',
-    title='all cnv vs 1657',
-    y = 'pvalue')
-
-# do GSEA based on log2FC
-## assume 1st column is ID
-## 2nd column is FC
-
-## feature 1: numeric vector
-geneList_1728diff = res$log2FoldChange[-1] #remove GRESHAMGFP
-## feature 2: named vector
-gene.df <- bitr(rownames(res)[-1], fromType = "ORF",
-        toType = "ENTREZID",
-        OrgDb = org.Sc.sgd.db::org.Sc.sgd.db)
-names(geneList_1728diff) = gene.df$ENTREZID
-## feature 3: decreasing order
-geneList_1728diff = sort(geneList_1728diff, decreasing = TRUE)
-ego1728 <- gseGO(geneList     = geneList_1728diff,
-             OrgDb        = org.Sc.sgd.db::org.Sc.sgd.db,
-             keyType = "ENTREZID",
-              #ont          = "BP",
-              nPerm        = 1e6,
-              #minGSSize    = 100,
-              #maxGSSize    = 500,
-              minGSSize    = 5,
-              maxGSSize    = 800,
-              pvalueCutoff = 0.05,
-              pAdjustMethod="fdr",
-              verbose      = TRUE)
-ego1728@result %>%
-  kable() %>%
-  kable_styling()
-# visualize results of GSEA
-dotplot(ego1728, x="Count", showCategory=13) + ggtitle("1728")
-ridgeplot(ego1728) + ggtitle("1728")
-
-#####this is for 1734 vs 1657####
-counts = as.data.frame(ipg) %>% dplyr::select(`1657_1`, `1657_2`,`1734`)
-rownames(counts) = ipg$gene
-#make col data frame describing exp
-coldata = data.frame(type = c("wt", "wt", "cnv"), sample = c('1657_1','1657_2','1734'), row.names = colnames(counts))
-coldata$type = factor(coldata$type, levels = c('wt', 'cnv'))
-#make deseq data
-dds <- DESeqDataSetFromMatrix(countData = counts,
-                              colData = coldata,
-                              design = ~ type)
-dds <- DESeq(dds)
-res <- results(dds, alpha=0.05)
-summary(res)
-DESeq2::plotMA(res, ylim=c(-2,2))
-EnhancedVolcano(res,
-    lab = rownames(res),
-    x = 'log2FoldChange',
-    title='all cnv vs 1657',
-    y = 'pvalue')
-
-# do GSEA based on log2FC
-## assume 1st column is ID
-## 2nd column is FC
-
-## feature 1: numeric vector
-geneList_1734diff = res$log2FoldChange[-1] #remove GRESHAMGFP
-## feature 2: named vector
-gene.df <- bitr(rownames(res)[-1], fromType = "ORF",
-        toType = "ENTREZID",
-        OrgDb = org.Sc.sgd.db::org.Sc.sgd.db)
-names(geneList_1734diff) = gene.df$ENTREZID
-## feature 3: decreasing order
-geneList_1734diff = sort(geneList_1734diff, decreasing = TRUE)
-ego1734 <- gseGO(geneList     = geneList_1734diff,
-             OrgDb        = org.Sc.sgd.db::org.Sc.sgd.db,
-             keyType = "ENTREZID",
-              #ont          = "BP",
-              nPerm        = 1e6,
-              #minGSSize    = 100,
-              #maxGSSize    = 500,
-              minGSSize    = 5,
-              maxGSSize    = 800,
-              pvalueCutoff = 0.05,
-              pAdjustMethod="fdr",
-              verbose      = TRUE)
-ego1734@result %>%
-  kable() %>%
-  kable_styling()
-# visualize results of GSEA
-dotplot(ego1734, x="Count", showCategory=13) + ggtitle("1734")
-ridgeplot(ego1734) + ggtitle("1734")
-
-#####this is for 1736 vs 1657####
-counts = as.data.frame(ipg) %>% dplyr::select(`1657_1`, `1657_2`,`1736`)
-rownames(counts) = ipg$gene
-#make col data frame describing exp
-coldata = data.frame(type = c("wt", "wt", "cnv"), sample = c('1657_1','1657_2','1736'), row.names = colnames(counts))
-coldata$type = factor(coldata$type, levels = c('wt', 'cnv'))
-#make deseq data
-dds <- DESeqDataSetFromMatrix(countData = counts,
-                              colData = coldata,
-                              design = ~ type)
-dds <- DESeq(dds)
-res <- results(dds, alpha=0.05)
-summary(res)
-DESeq2::plotMA(res, ylim=c(-2,2))
-EnhancedVolcano(res,
-    lab = rownames(res),
-    x = 'log2FoldChange',
-    title='all cnv vs 1657',
-    y = 'pvalue')
-
-# do GSEA based on log2FC
-## assume 1st column is ID
-## 2nd column is FC
-
-## feature 1: numeric vector
-geneList_1736diff = res$log2FoldChange[-1] #remove GRESHAMGFP
-## feature 2: named vector
-gene.df <- bitr(rownames(res)[-1], fromType = "ORF",
-        toType = "ENTREZID",
-        OrgDb = org.Sc.sgd.db::org.Sc.sgd.db)
-names(geneList_1736diff) = gene.df$ENTREZID
-## feature 3: decreasing order
-geneList_1736diff = sort(geneList_1736diff, decreasing = TRUE)
-ego1736 <- gseGO(geneList     = geneList_1736diff,
-             OrgDb        = org.Sc.sgd.db::org.Sc.sgd.db,
-             keyType = "ENTREZID",
-              #ont          = "BP",
-              nPerm        = 1e6,
-              #minGSSize    = 100,
-              #maxGSSize    = 500,
-              minGSSize    = 5,
-              maxGSSize    = 800,
-              pvalueCutoff = 0.05,
-              pAdjustMethod="fdr",
-              verbose      = TRUE)
-ego1736@result %>%
-  kable() %>%
-  kable_styling()
-# visualize results of GSEA
-dotplot(ego1736, x="Count", showCategory=13) + ggtitle("1736")
-ridgeplot(ego1736) + ggtitle("1736")
-
-#####this is for 1740 vs 1657####
-counts = as.data.frame(ipg) %>% dplyr::select(`1657_1`, `1657_2`,`1740`)
-rownames(counts) = ipg$gene
-#make col data frame describing exp
-coldata = data.frame(type = c("wt", "wt", "cnv"), sample = c('1657_1','1657_2','1740'), row.names = colnames(counts))
-coldata$type = factor(coldata$type, levels = c('wt', 'cnv'))
-#make deseq data
-dds <- DESeqDataSetFromMatrix(countData = counts,
-                              colData = coldata,
-                              design = ~ type)
-dds <- DESeq(dds)
-res <- results(dds, alpha=0.05)
-summary(res)
-DESeq2::plotMA(res, ylim=c(-2,2))
-EnhancedVolcano(res,
-    lab = rownames(res),
-    x = 'log2FoldChange',
-    title='all cnv vs 1657',
-    y = 'pvalue')
-
-# do GSEA based on log2FC
-## assume 1st column is ID
-## 2nd column is FC
-
-## feature 1: numeric vector
-geneList_1740diff = res$log2FoldChange[-1] #remove GRESHAMGFP
-## feature 2: named vector
-gene.df <- bitr(rownames(res)[-1], fromType = "ORF",
-        toType = "ENTREZID",
-        OrgDb = org.Sc.sgd.db::org.Sc.sgd.db)
-names(geneList_1740diff) = gene.df$ENTREZID
-## feature 3: decreasing order
-geneList_1740diff = sort(geneList_1740diff, decreasing = TRUE)
-ego1740 <- gseGO(geneList     = geneList_1740diff,
-             OrgDb        = org.Sc.sgd.db::org.Sc.sgd.db,
-             keyType = "ENTREZID",
-              #ont          = "BP",
-              nPerm        = 1e6,
-              #minGSSize    = 100,
-              #maxGSSize    = 500,
-              minGSSize    = 5,
-              maxGSSize    = 800,
-              pvalueCutoff = 0.05,
-              pAdjustMethod="fdr",
-              verbose      = TRUE)
-ego1740@result %>%
-  kable() %>%
-  kable_styling()
-# visualize results of GSEA
-dotplot(ego1740, x="Count", showCategory=13) + ggtitle("1740")
-ridgeplot(ego1740) + ggtitle("1740")
-
-#####this is for 1744 vs 1657####
-counts = as.data.frame(ipg) %>% dplyr::select(`1657_1`, `1657_2`,`1744`)
-rownames(counts) = ipg$gene
-#make col data frame describing exp
-coldata = data.frame(type = c("wt", "wt", "cnv"), sample = c('1657_1','1657_2','1744'), row.names = colnames(counts))
-coldata$type = factor(coldata$type, levels = c('wt', 'cnv'))
-#make deseq data
-dds <- DESeqDataSetFromMatrix(countData = counts,
-                              colData = coldata,
-                              design = ~ type)
-dds <- DESeq(dds)
-res <- results(dds, alpha=0.05)
-summary(res)
-DESeq2::plotMA(res, ylim=c(-2,2))
-EnhancedVolcano(res,
-    lab = rownames(res),
-    x = 'log2FoldChange',
-    title='all cnv vs 1657',
-    y = 'pvalue')
-
-# do GSEA based on log2FC
-## assume 1st column is ID
-## 2nd column is FC
-
-## feature 1: numeric vector
-geneList_1744diff = res$log2FoldChange[-1] #remove GRESHAMGFP
-## feature 2: named vector
-gene.df <- bitr(rownames(res)[-1], fromType = "ORF",
-        toType = "ENTREZID",
-        OrgDb = org.Sc.sgd.db::org.Sc.sgd.db)
-names(geneList_1744diff) = gene.df$ENTREZID
-## feature 3: decreasing order
-geneList_1744diff = sort(geneList_1744diff, decreasing = TRUE)
-ego1744 <- gseGO(geneList     = geneList_1744diff,
-             OrgDb        = org.Sc.sgd.db::org.Sc.sgd.db,
-             keyType = "ENTREZID",
-              #ont          = "BP",
-              nPerm        = 1e6,
-              #minGSSize    = 100,
-              #maxGSSize    = 500,
-              minGSSize    = 5,
-              maxGSSize    = 800,
-              pvalueCutoff = 0.05,
-              pAdjustMethod="fdr",
-              verbose      = TRUE)
-ego1744@result %>%
-  kable() %>%
-  kable_styling()
-# visualize results of GSEA
-dotplot(ego1744, x="Count", showCategory=20) + ggtitle("1744")
-ridgeplot(ego1744) + ggtitle("1744")
-
-#####this is for 1747 vs 1657####
-counts = as.data.frame(ipg) %>% dplyr::select(`1657_1`, `1657_2`,`1747`)
-rownames(counts) = ipg$gene
-#make col data frame describing exp
-coldata = data.frame(type = c("wt", "wt", "cnv"), sample = c('1657_1','1657_2','1747'), row.names = colnames(counts))
-coldata$type = factor(coldata$type, levels = c('wt', 'cnv'))
-#make deseq data
-dds <- DESeqDataSetFromMatrix(countData = counts,
-                              colData = coldata,
-                              design = ~ type)
-dds <- DESeq(dds)
-res <- results(dds, alpha=0.05)
-summary(res)
-DESeq2::plotMA(res, ylim=c(-2,2))
-EnhancedVolcano(res,
-    lab = rownames(res),
-    x = 'log2FoldChange',
-    title='all cnv vs 1657',
-    y = 'pvalue')
-
-# do GSEA based on log2FC
-## assume 1st column is ID
-## 2nd column is FC
-
-## feature 1: numeric vector
-geneList_1747diff = res$log2FoldChange[-1] #remove GRESHAMGFP
-## feature 2: named vector
-gene.df <- bitr(rownames(res)[-1], fromType = "ORF",
-        toType = "ENTREZID",
-        OrgDb = org.Sc.sgd.db::org.Sc.sgd.db)
-names(geneList_1747diff) = gene.df$ENTREZID
-## feature 3: decreasing order
-geneList_1747diff = sort(geneList_1747diff, decreasing = TRUE)
-ego1747 <- gseGO(geneList     = geneList_1747diff,
-             OrgDb        = org.Sc.sgd.db::org.Sc.sgd.db,
-             keyType = "ENTREZID",
-              #ont          = "BP",
-              nPerm        = 1e6,
-              #minGSSize    = 100,
-              #maxGSSize    = 500,
-              minGSSize    = 5,
-              maxGSSize    = 800,
-              pvalueCutoff = 0.05,
-              pAdjustMethod="fdr",
-              verbose      = TRUE)
-ego1747@result %>%
-  kable() %>%
-  kable_styling()
-# visualize results of GSEA
-dotplot(ego1747, x="Count", showCategory=20) + ggtitle("1747")
-ridgeplot(ego1747) + ggtitle("1747")
-
-#####this is for 1751 vs 1657####
-counts = as.data.frame(ipg) %>% dplyr::select(`1657_1`, `1657_2`,`1751`)
-rownames(counts) = ipg$gene
-#make col data frame describing exp
-coldata = data.frame(type = c("wt", "wt", "cnv"), sample = c('1657_1','1657_2','1751'), row.names = colnames(counts))
-coldata$type = factor(coldata$type, levels = c('wt', 'cnv'))
-#make deseq data
-dds <- DESeqDataSetFromMatrix(countData = counts,
-                              colData = coldata,
-                              design = ~ type)
-dds <- DESeq(dds)
-res <- results(dds, alpha=0.05)
-summary(res)
-DESeq2::plotMA(res, ylim=c(-2,2))
-EnhancedVolcano(res,
-    lab = rownames(res),
-    x = 'log2FoldChange',
-    title='all cnv vs 1657',
-    y = 'pvalue')
-
-# do GSEA based on log2FC
-## assume 1st column is ID
-## 2nd column is FC
-
-## feature 1: numeric vector
-geneList_1751diff = res$log2FoldChange[-1] #remove GRESHAMGFP
-## feature 2: named vector
-gene.df <- bitr(rownames(res)[-1], fromType = "ORF",
-        toType = "ENTREZID",
-        OrgDb = org.Sc.sgd.db::org.Sc.sgd.db)
-names(geneList_1751diff) = gene.df$ENTREZID
-## feature 3: decreasing order
-geneList_1751diff = sort(geneList_1751diff, decreasing = TRUE)
-ego1751 <- gseGO(geneList     = geneList_1751diff,
-             OrgDb        = org.Sc.sgd.db::org.Sc.sgd.db,
-             keyType = "ENTREZID",
-              #ont          = "BP",
-              nPerm        = 1e6,
-              #minGSSize    = 100,
-              #maxGSSize    = 500,
-              minGSSize    = 5,
-              maxGSSize    = 800,
-              pvalueCutoff = 0.05,
-              pAdjustMethod="fdr",
-              verbose      = TRUE)
-ego1751@result %>%
-  kable() %>%
-  kable_styling()
-# visualize results of GSEA
-dotplot(ego1751, x="Count", showCategory=23) + ggtitle("1751")
-ridgeplot(ego1751) + ggtitle("1751")
-```
