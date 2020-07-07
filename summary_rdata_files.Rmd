@@ -438,14 +438,12 @@ ego <- gseGO(geneList     = geneList_allCNVdiff,
              keyType = "ENTREZID",
               ont          = "BP",
               nPerm        = 1e6,
-              minGSSize    = 5,
-              maxGSSize    = 800,
+              minGSSize    = 10,
+              maxGSSize    = 500,
               pvalueCutoff = 0.05,
               pAdjustMethod="fdr",
-              verbose      = FALSE)
-ego@result %>%
-  kable() %>%
-  kable_styling()
+              verbose      = FALSE,
+             seed = 1)
 
 
 gsea_out = as_tibble(ego@result) %>% mutate(sample = "All_CNV") %>% select(sample, ID,Description, setSize, enrichmentScore, NES, p.adjust,rank, pvalue, core_enrichment) %>% arrange(sample,-enrichmentScore)
@@ -479,23 +477,135 @@ for(strain in c("1728", "1734", "1736", "1740", "1744", "1747", "1751")) {
              keyType = "ENTREZID",
               ont          = "BP",
               nPerm        = 1e6,
-              minGSSize    = 5,
-              maxGSSize    = 800,
+              minGSSize    = 10,
+              maxGSSize    = 500,
               pvalueCutoff = 0.05,
               pAdjustMethod="fdr",
-              verbose      = FALSE)
+              verbose      = FALSE,
+             seed = 1)
   gsea_out = bind_rows(gsea_out, as_tibble(ego@result) %>% mutate(sample = strain))
 }
 #### write data for Figure 2C - but it needs to be summarized by REVIGO first####
-gsea_out = gsea_out %>% select(ID,enrichmentScore,sample,Description, setSize, NES, p.adjust,rank, pvalue, core_enrichment) %>% arrange(sample,-enrichmentScore)
+gsea_out = gsea_out %>% select(sample,ID,Description, enrichmentScore, setSize, NES, p.adjust,rank, pvalue, core_enrichment) %>% arrange(sample,-enrichmentScore)
 write_tsv(gsea_out, "./figure_data/Fig2C_to_summarize.tsv")
 
 # gather together REVIGO summarized data
+revigo = NULL
+for(set in c("1728", "1734", "1736", "1740", "1744", "1747", "1751", "AllCNV")){
+  revigo = bind_rows(revigo, read_csv(paste0("./figure_data/REVIGO", set, ".csv"), 
+                                      comment = "#") %>%
+    select(!starts_with("plot"), -description) %>% mutate(userVal_2 = if_else(is.na(userVal_2), "All_CNV", as.character(userVal_2))))
+}
+
+gsea_out_final = gsea_out %>% full_join(revigo, by = c("ID" = "term_ID", "sample" = "userVal_2")) %>%
+  mutate(eliminated = if_else(is.na(eliminated), 0, eliminated)) %>% # zero is keep, 1 is eliminate
+  mutate(group = case_when(Description == "mitochondrial translation" ~ "translation",
+                           Description == "mitochondrial gene expression" ~ "mitochondrial function",
+                           Description == "cytoplasmic translation" ~ "translation",
+                           Description == "cytochrome complex assembly" ~ "mitochondrial function",
+                           Description == "translational elongation" ~ "translation",
+                           Description == "ribosomal large subunit biogenesis" ~ "ribsome biogenesis",
+                           Description == "nucleic acid phosphodiester bond hydrolysis" ~ "",
+                           Description == "organelle localization" ~ "cellular component organization",
+                           Description == "protein localization to chromosome, centromeric region" ~ "",
+                           Description == "aerobic electron transport chain" ~ "mitochondrial function",
+                           Description == "ribonucleoprotein complex subunit organization" ~ "complexes",
+                           Description == "ncRNA processing" ~ "RNA processing",
+                           Description == "ribosome biogenesis" ~ "ribosome biogenesis",
+                           Description == "ncRNA metabolic process" ~ "RNA processing",
+                           Description == "transposition" ~ "",
+                           Description == "transposition, RNA-mediated" ~ "",
+                           Description == "Golgi vesicle transport" ~ "",
+                           Description == "organelle membrane fusion" ~ "cellular component organization",
+                           Description == "rRNA 5'-end processing" ~ "ribosome biogenesis",
+                           Description == "ncRNA export from nucleus" ~ "RNA processing",
+                           Description == "mRNA metabolic process" ~ "RNA processing",
+                           Description == "electron transport chain" ~ "mitochondrial function",
+                           Description == "cellular oxidant detoxification" ~ "",
+                           Description == "intracellular protein transport" ~ "",
+                           Description == "regulation of cellular component organization" ~ "cellular component organization",
+                           Description == "DNA recombination" ~ "DNA replication & repair",
+                           Description == "lipid biosynthetic process" ~ "",
+                           Description == "cell division" ~ "cell cycle",
+                           Description == "mitotic cell cycle" ~ "cell cycle",
+                           Description == "posttranscriptional regulation of gene expression" ~ "",
+                           Description == "ribonucleoprotein complex assembly" ~ "complexes",
+                           Description == "chromosome segregation" ~ "DNA replication & repair",
+                           Description == "RNA phosphodiester bond hydrolysis" ~ "RNA processing",
+                           Description == "microtubule-based process" ~ "",
+                           Description == "peptidyl-lysine modification" ~ "post-translational regulation",
+                           Description == "DNA-templated transcription, elongation" ~ "transcription",
+                           Description == "mitotic nuclear division" ~ "cell cycle",
+                           Description == "organic hydroxy compound biosynthetic process" ~ "",
+                           Description == "protein maturation" ~ "post-translational regulation",
+                           Description == "DNA-templated transcription, initiation" ~ "transcription",
+                           Description == "transcription initiation from RNA polymerase II promoter" ~ "transcription",
+                           Description == "regulation of DNA-templated transcription, elongation" ~ "transcription",
+                           Description == "DNA-templated transcription, termination" ~ "transcription",
+                           Description == "amino acid activation" ~ "",
+                           Description == "membrane docking" ~ "cellular component organization",
+                           Description == "organelle localization by membrane tethering" ~ "cellular component organization",
+                           Description == "positive regulation of proteolysis" ~ "post-translational regulation",
+                           Description == "polyadenylation-dependent snoRNA 3'-end processing" ~ "RNA processing",
+                           Description == "proteasomal ubiquitin-independent protein catabolic process" ~ "post-translational regulation",
+                           Description == "snRNA processing" ~ "RNA processing",
+                           Description == "exocytic process" ~ "",
+                           Description == "vesicle docking involved in exocytosis" ~ "",
+                           Description == "mRNA processing" ~ "RNA processing"))
+
+# write final data for Figure 2C and Supplementary Table X
+write_csv(gsea_out_final, "./figure_data/Fig2C.csv")
 
 #### write data for Figure 2D####
 significant_by_strain$common_name = yeast_systematic_to_common(significant_by_strain$gene)
+
+### I NEED TO ADD IN ANNOTATION FOR COPY NUMBER ####
+
 write_csv(significant_by_strain, "./figure_data/Fig2D.csv")
 ```
+
+### Do differential analysis on CNVs vs 1657 - windows based approach
+This is to account for non-coding regions as well as protein domains
+```{r}
+#make counts matrix the way deseq wants it
+window_counts = cov_df %>% 
+  pivot_wider(names_from = "sample", values_from = "coverage") %>%
+  mutate(location = paste(chromosome, bin_start, sep = "_")) %>%
+  select(-chromosome, -bin_start, -bin_end)
+
+#####this is for all cnv vs 1657####
+counts = as.data.frame(window_counts) %>% dplyr::select(-location)
+rownames(counts) = window_counts$location
+#make col data frame describing exp
+coldata = data.frame(type = c("wt", "wt", "cnv", "cnv", "cnv", "cnv", "cnv","cnv", "cnv"), sample = c('1657_1','1657_2','1728','1734', '1736', '1740', '1744','1747','1751'), row.names = colnames(counts))
+coldata$type = factor(coldata$type, levels = c('wt', 'cnv'))
+#make deseq data
+dds <- DESeqDataSetFromMatrix(countData = counts,
+                              colData = coldata,
+                              design = ~ type)
+dds <- DESeq(dds)
+res <- results(dds, alpha=0.05)
+windows_significant_by_strain = as_tibble(res) %>% 
+                                      mutate(location = rownames(res), strain = "All_CNV") %>% 
+                                      filter(padj < 0.05)
+
+for(strain in c("1728", "1734", "1736", "1740", "1744", "1747", "1751")) {
+  counts = as.data.frame(window_counts) %>% dplyr::select(`1657_1`, `1657_2`, strain)
+  rownames(counts) = window_counts$location
+  coldata = data.frame(type = c("wt", "wt", "cnv"), sample = c('1657_1','1657_2',strain), row.names = colnames(counts))
+  coldata$type = factor(coldata$type, levels = c('wt', 'cnv'))
+  dds <- DESeqDataSetFromMatrix(countData = counts,
+                              colData = coldata,
+                              design = ~ type)
+  dds <- DESeq(dds)
+  res <- results(dds, alpha=0.05)
+  windows_significant_by_strain = bind_rows(windows_significant_by_strain, 
+                                    as_tibble(res) %>% 
+                                      mutate(location = rownames(res), strain = strain) %>%
+                                      filter(padj < 0.05))
+}
+```
+
 
 ## Relative frequency of insertions in CNV regions vs 1657
 

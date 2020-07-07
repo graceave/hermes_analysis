@@ -18,6 +18,8 @@ library(ggpubr)
 library(ggrastr)
 library(knitr)
 library(kableExtra)
+library(gplots)
+library(ggrepel)
 
 theme_set(theme_minimal(base_size = 12))
 ```
@@ -85,11 +87,13 @@ f2d = read.csv("./figure_data/Fig2D.csv")
 a1 = ggplot(f2a, aes(common_name, norm_inserts, fill = strain)) +
   geom_bar(stat = "identity", position = "dodge") +
   scale_fill_brewer(palette = "Set3") +
-  ylab("number of unique insertion sites / total insertion sites")
+  ylab("number of unique insertion sites / total insertion sites") + 
+  xlab("")
 a2 = ggplot(f2a, aes(common_name, insertions, fill = strain)) +
   geom_bar(stat = "identity", position = "dodge") +
   scale_fill_brewer(palette = "Set3") +
-  ylab("number of unique insertion sites")
+  ylab("number of unique insertion sites") + 
+  xlab("")
 b = ggplot(f2b) +
   geom_point(aes(x = log2FoldChange, y = -log10(pvalue), colour = sig), alpha = 0.75) +
   ggtitle("Insertions in all CNV strains vs euploid") +
@@ -101,14 +105,40 @@ b = ggplot(f2b) +
         legend.background = element_blank(),
         legend.box.background = element_rect(colour = "black")) +
   geom_text_repel(aes(x = log2FoldChange, y = -log10(pvalue), label = ifelse(sig == T, as.character(common_name),"")))
-c = ggplot(f2c, aes(x = sample, y =  Description, order, color = enrichmentScore, size =  setSize)) +
+c1 = ggplot(f2c %>% 
+  filter(eliminated == 0), aes(x = sample, y =  reorder(Description, as.numeric(as.factor(group))), color = enrichmentScore, size =  setSize)) +
   geom_point(aes(size = setSize)) +
-  scale_size_continuous(range = c(4, 10)) + 
   ggtitle("Biological Pathway (p.adj<0.05)")+
   xlab("")+
   ylab("")+
-  scale_colour_gradient2(low = "blue", mid = "white", high = "red") +
-  theme(axis.text = element_text(face = "bold", color = "black", size = 30))
+  scale_colour_gradient2(low = "blue", mid = "white", high = "red")
+
+c2 = ggplot(f2c %>% 
+  filter(eliminated == 0, sample != "1744"), aes(x = sample, y =  reorder(Description, as.numeric(as.factor(group))), color = enrichmentScore, size =  setSize)) +
+  geom_point(aes(size = setSize)) +
+  ggtitle("Biological Pathway (p.adj<0.05)")+
+  xlab("")+
+  ylab("")+
+  scale_colour_gradient2(low = "blue", mid = "white", high = "red")
+
+d = heatmap.2(f2d,
+  cellnote = copy_number,  
+  main = "", 
+  notecol="black",      
+  density.info="none",  
+  trace="none",    
+  margins =c(12,9),    
+  #breaks=col_breaks,   
+  Rowv = NULL,
+  Colv=NULL)
+
+d = ggplot(f2d, aes(as.character(strain), common_name, fill = log2FoldChange)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red") +
+  theme_classic() + 
+  ggtitle("Differential insertions genes (compared to euploid) p.adj<0.05") +
+  xlab("") +
+  ylab("")
 ```
 
 # Figure 3 Amplified genes
@@ -159,6 +189,8 @@ SFig2.1B metagene plots essential vs non-essential genes
 SFig2.1A Normalized insertions/gene for genes in Fig2D
 
 # Supplementary Figure 2.2 Differential analysis and GSEA excluding amplified genes
+
+# Supplementary Table X Full GSEA outputs
 
 ## Here are normalized insertions per gene for the genes we will validate
 ```{r}
